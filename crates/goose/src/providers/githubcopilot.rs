@@ -266,6 +266,7 @@ impl GithubCopilotProvider {
         is_user_initiated: bool,
         payload: &mut Value,
         has_images: bool,
+        streaming: bool,
     ) -> Result<Response, ProviderError> {
         let (endpoint, token) = self.get_api_info().await?;
         let auth = AuthMethod::BearerToken(token);
@@ -282,6 +283,7 @@ impl GithubCopilotProvider {
         api_client
             .request(path)
             .model_headers(model_config)?
+            .streaming(streaming)
             .response_post(payload)
             .await
             .map_err(|e| e.into())
@@ -421,6 +423,7 @@ impl GithubCopilotProvider {
                         is_user_initiated,
                         &mut payload_clone,
                         has_images,
+                        true,
                     )
                     .await?;
                 handle_status(resp).await
@@ -468,6 +471,7 @@ impl GithubCopilotProvider {
                             is_user_initiated,
                             &mut payload_clone,
                             has_images,
+                            true,
                         )
                         .await?;
                     handle_status(resp).await
@@ -498,6 +502,7 @@ impl GithubCopilotProvider {
                         is_user_initiated,
                         &mut payload_clone,
                         has_images,
+                        false,
                     )
                     .await
                 })

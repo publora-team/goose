@@ -599,6 +599,7 @@ impl Provider for DatabricksProvider {
                         .api_client
                         .request(&path)
                         .model_headers(model_config)?
+                        .streaming(true)
                         .response_post(&payload_clone)
                         .await?;
                     handle_status(resp).await
@@ -664,6 +665,7 @@ impl Provider for DatabricksProvider {
                         .api_client
                         .request(&path)
                         .model_headers(model_config)?
+                        .streaming(true)
                         .response_post(&payload)
                         .await?;
                     if !resp.status().is_success() {
@@ -686,6 +688,7 @@ impl Provider for DatabricksProvider {
                             .api_client
                             .request(&path)
                             .model_headers(model_config)?
+                            .streaming(true)
                             .response_post(&payload)
                             .await?;
                         if !resp.status().is_success() {

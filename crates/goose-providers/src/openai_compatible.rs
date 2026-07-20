@@ -125,6 +125,7 @@ impl Provider for OpenAiCompatibleProvider {
                     .api_client
                     .request(&completions_path)
                     .model_headers(model_config)?
+                    .streaming(self.supports_streaming)
                     .response_post(&payload)
                     .await?;
                 handle_status(resp).await

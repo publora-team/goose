@@ -1,4 +1,4 @@
-use crate::api_client::{AuthMethod, TlsConfig};
+use crate::api_client::{AuthMethod, TlsConfig, DEFAULT_PROVIDER_TIMEOUT_SECS};
 use crate::base::ProviderDescriptor;
 use crate::declarative::{DeclarativeProviderConfig, KeyResolver};
 use crate::errors::ProviderError;
@@ -285,7 +285,8 @@ impl Provider for AnthropicProvider {
                 let request = self
                     .api_client
                     .request("v1/messages")
-                    .model_headers(model_config)?;
+                    .model_headers(model_config)?
+                    .streaming(true);
                 let resp = request.response_post(&payload).await?;
                 handle_status(resp).await
             })
@@ -368,7 +369,15 @@ pub fn from_declarative_config(
 
     let format_options = format_options_for_provider(config.preserves_thinking);
 
-    let mut api_client = ApiClient::new_with_tls(config.base_url, auth, tls_config)?;
+    let timeout_secs = config
+        .timeout_seconds
+        .unwrap_or(DEFAULT_PROVIDER_TIMEOUT_SECS);
+    let mut api_client = ApiClient::with_timeout_and_tls(
+        config.base_url,
+        auth,
+        std::time::Duration::from_secs(timeout_secs),
+        tls_config,
+    )?;
 
     if let Some(headers) = &config.headers {
         let mut header_map = reqwest::header::HeaderMap::new();

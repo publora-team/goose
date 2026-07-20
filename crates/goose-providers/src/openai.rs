@@ -662,6 +662,7 @@ impl Provider for OpenAiProvider {
                             OPEN_AI_DEFAULT_RESPONSES_PATH,
                         ))
                         .model_headers(model_config)?
+                        .streaming(self.supports_streaming)
                         .response_post(&payload_clone)
                         .await?;
                     handle_status(resp).await
@@ -722,6 +723,7 @@ impl Provider for OpenAiProvider {
                         .api_client
                         .request(&self.base_path)
                         .model_headers(model_config)?
+                        .streaming(self.supports_streaming)
                         .response_post(&payload)
                         .await?;
                     handle_status(resp).await

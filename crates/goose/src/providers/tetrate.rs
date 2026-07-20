@@ -154,6 +154,7 @@ impl Provider for TetrateProvider {
                     .api_client
                     .request("v1/chat/completions")
                     .model_headers(model_config)?
+                    .streaming(true)
                     .response_post(&payload)
                     .await?;
                 let resp = handle_status(resp)

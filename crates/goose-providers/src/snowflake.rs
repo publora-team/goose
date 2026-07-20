@@ -100,6 +100,7 @@ impl SnowflakeProvider {
             .api_client
             .request("api/v2/cortex/inference:complete")
             .model_headers(model_config)?
+            .streaming(true)
             .response_post(payload)
             .await?;
 

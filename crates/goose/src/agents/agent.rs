@@ -284,6 +284,23 @@ fn agent_visible_message_text(message: &Message) -> String {
     message.agent_visible_content().as_concat_text()
 }
 
+/// Discard the interrupted tail of an in-flight provider turn, keeping only
+/// messages up to and including the last executed tool response so the
+/// conversation stays well-formed when the turn is retried.
+fn truncate_to_last_tool_response(messages: &mut Conversation) {
+    let keep = messages
+        .messages()
+        .iter()
+        .rposition(|m| {
+            m.content
+                .iter()
+                .any(|c| matches!(c, MessageContent::ToolResponse(_)))
+        })
+        .map(|idx| idx + 1)
+        .unwrap_or(0);
+    messages.truncate(keep);
+}
+
 fn attach_turn_usage(
     messages: &mut Conversation,
     usage: &ProviderUsage,
@@ -1936,6 +1953,8 @@ impl Agent {
             let mut compaction_attempts = 0;
             let mut empty_turn_retries = 0u32;
             let mut retrying_after_empty_turn = false;
+            let mut network_retry_attempts: usize = 0;
+            let mut retrying_after_network_error = false;
             let mut last_assistant_text = String::new();
             let mut goal_check_pending = false;
             let mut tool_pair_summarization_done = false;
@@ -2014,6 +2033,8 @@ impl Agent {
                     retrying_after_stop_hook_denial = false;
                 } else if retrying_after_empty_turn {
                     retrying_after_empty_turn = false;
+                } else if retrying_after_network_error {
+                    retrying_after_network_error = false;
                 } else {
                     turns_taken += 1;
                 }
@@ -2631,6 +2652,28 @@ impl Agent {
                             break;
                         }
                         Err(ref provider_err @ ProviderError::NetworkError(_)) => {
+                            let retry_config = self.provider().await?.retry_config();
+                            if network_retry_attempts < retry_config.max_retries {
+                                network_retry_attempts += 1;
+                                let delay = retry_config.delay_for_attempt(network_retry_attempts);
+                                warn!(
+                                    "Provider stream failed with a network error; retrying ({}/{}) in {:?}: {}",
+                                    network_retry_attempts, retry_config.max_retries, delay, provider_err
+                                );
+                                truncate_to_last_tool_response(&mut messages_to_add);
+                                yield AgentEvent::Message(
+                                    Message::assistant().with_system_notification(
+                                        SystemNotificationType::InlineMessage,
+                                        format!(
+                                            "Connection interrupted. Retrying ({}/{})...",
+                                            network_retry_attempts, retry_config.max_retries
+                                        ),
+                                    )
+                                );
+                                tokio::time::sleep(delay).await;
+                                retrying_after_network_error = true;
+                                break;
+                            }
                             provider_errored = true;
                             #[cfg(feature = "telemetry")]
                             crate::posthog::emit_error(provider_err.telemetry_type(), &provider_err.to_string());
@@ -2655,6 +2698,9 @@ impl Agent {
                             break;
                         }
                     }
+                }
+                if !retrying_after_network_error {
+                    network_retry_attempts = 0;
                 }
                 can_drain_pending_steers = true;
 
@@ -2694,7 +2740,7 @@ impl Agent {
                     empty_turn_retries = 0;
                 }
 
-                if no_tools_called && !exit_chat {
+                if no_tools_called && !exit_chat && !retrying_after_network_error {
                     // Lock, extract state, drop guard before branching — handle_retry_logic
                     // also locks final_output_tool and tokio::sync::Mutex is not reentrant.
                     let final_output = {
