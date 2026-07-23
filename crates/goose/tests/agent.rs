@@ -855,10 +855,12 @@ mod tests {
         const PARTIAL_TEXT: &str = "Partial response before the stream died";
         const RECOVERED_TEXT: &str = "Recovered after the network error.";
 
-        /// Fails the first `failures` stream calls with a mid-stream NetworkError.
+        /// Fails the first `failures` stream calls with a mid-stream NetworkError,
+        /// or fails stream creation itself when `fail_at_creation` is set.
         struct FlakyStreamProvider {
             call_count: AtomicUsize,
             failures: usize,
+            fail_at_creation: bool,
         }
 
         impl FlakyStreamProvider {
@@ -866,6 +868,15 @@ mod tests {
                 Self {
                     call_count: AtomicUsize::new(0),
                     failures,
+                    fail_at_creation: false,
+                }
+            }
+
+            fn new_failing_creation() -> Self {
+                Self {
+                    call_count: AtomicUsize::new(0),
+                    failures: usize::MAX,
+                    fail_at_creation: true,
                 }
             }
         }
@@ -908,6 +919,11 @@ mod tests {
                 _tools: &[Tool],
             ) -> Result<MessageStream, ProviderError> {
                 let n = self.call_count.fetch_add(1, Ordering::SeqCst);
+                if self.fail_at_creation {
+                    return Err(ProviderError::NetworkError(
+                        "error sending request".to_string(),
+                    ));
+                }
                 if n < self.failures {
                     let partial = Message::assistant().with_text(PARTIAL_TEXT);
                     Ok(Box::pin(futures::stream::iter(vec![
@@ -1158,6 +1174,24 @@ mod tests {
             assert!(
                 history_text.matches(PARTIAL_TEXT).count() <= 1,
                 "retried attempts must not accumulate duplicate partial turns in history"
+            );
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn test_network_error_at_stream_creation_is_not_retried() -> Result<()> {
+            let provider = Arc::new(FlakyStreamProvider::new_failing_creation());
+            let (yielded, _history) = run_reply(provider.clone(), 5).await?;
+
+            let yielded_text = concat_texts(&yielded);
+            assert!(
+                yielded_text.contains("Please resend your message to try again."),
+                "creation failures are already retried inside the provider and must be terminal here; yielded: {yielded_text}"
+            );
+            assert_eq!(
+                provider.call_count.load(Ordering::SeqCst),
+                1,
+                "the agent loop must not stack its retry budget on top of the provider's"
             );
             Ok(())
         }

@@ -2097,6 +2097,12 @@ impl Agent {
                 // reasoning without hiding final-only non-streaming thoughts.
                 let mut surfaced_thinking_in_turn = false;
 
+                // Stream-creation failures are already retried inside the
+                // provider (with_retry around the initial request), so the
+                // agent-level network retry must only cover streams that died
+                // after producing output, or the two budgets multiply.
+                let mut stream_yielded_item = false;
+
                 while let Some(next) = stream.next().await {
                     if is_token_cancelled(&cancel_token) || exit_chat {
                         break;
@@ -2104,6 +2110,7 @@ impl Agent {
 
                     match next {
                         Ok((response, usage)) => {
+                            stream_yielded_item = true;
                             compaction_attempts = 0;
 
                             if let Some(ref usage) = usage {
@@ -2653,7 +2660,7 @@ impl Agent {
                         }
                         Err(ref provider_err @ ProviderError::NetworkError(_)) => {
                             let retry_config = self.provider().await?.retry_config();
-                            if network_retry_attempts < retry_config.max_retries {
+                            if stream_yielded_item && network_retry_attempts < retry_config.max_retries {
                                 network_retry_attempts += 1;
                                 let delay = retry_config.delay_for_attempt(network_retry_attempts);
                                 warn!(
