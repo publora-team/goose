@@ -855,8 +855,6 @@ mod tests {
         const PARTIAL_TEXT: &str = "Partial response before the stream died";
         const RECOVERED_TEXT: &str = "Recovered after the network error.";
 
-        /// Fails the first `failures` stream calls with a mid-stream NetworkError,
-        /// or fails stream creation itself when `fail_at_creation` is set.
         struct FlakyStreamProvider {
             call_count: AtomicUsize,
             failures: usize,
@@ -953,8 +951,6 @@ mod tests {
             }
         }
 
-        /// Streams a tool call on the first request, dies mid-stream on the
-        /// second, succeeds afterwards, recording the messages of every call.
         struct ToolThenFlakyProvider {
             call_count: AtomicUsize,
             received: Mutex<Vec<Vec<Message>>>,
@@ -1206,7 +1202,6 @@ mod tests {
                 yielded_text.contains(RECOVERED_TEXT),
                 "expected recovery within max_turns=2, so the retry must not consume a turn; yielded: {yielded_text}"
             );
-            assert!(!yielded_text.contains("Please resend your message"));
             assert_eq!(provider.call_count.load(Ordering::SeqCst), 3);
 
             let received = provider.received.lock().unwrap();

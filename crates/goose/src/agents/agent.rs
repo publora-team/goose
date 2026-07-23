@@ -2097,10 +2097,9 @@ impl Agent {
                 // reasoning without hiding final-only non-streaming thoughts.
                 let mut surfaced_thinking_in_turn = false;
 
-                // Stream-creation failures are already retried inside the
-                // provider (with_retry around the initial request), so the
-                // agent-level network retry must only cover streams that died
-                // after producing output, or the two budgets multiply.
+                // Stream-creation failures are already retried inside the provider,
+                // so the agent-level retry only covers streams that died after
+                // producing output; otherwise the two retry budgets multiply.
                 let mut stream_yielded_item = false;
 
                 while let Some(next) = stream.next().await {
